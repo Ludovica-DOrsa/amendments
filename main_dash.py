@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from dash import Input, Output, dcc, html, State, dash_table
 from utils import *
+import plotly.express as px
 
 
 app = dash.Dash(external_stylesheets=[dbc.themes.SIMPLEX,
@@ -65,6 +66,31 @@ app.layout = dbc.Container(
         ], style={'width':'95%',
                   'margin': 'auto',
                   'margin-top':'3%'}),
+        dbc.Row([
+            cyto.Cytoscape(
+                id='network_graph',
+                layout={'name': 'circle'},
+                elements=[],
+                stylesheet = [{'selector': 'node',
+                                'style': {'shape': 'circle',
+                                'label': 'data(label)',
+                                'background-color': '#d9230f',
+                                "font-family": "sans-serif",}},
+                                {'selector': 'edge',
+                                 'style': {'width': 'data(weight)'}}],
+
+                style={'width': '100%', 'height': '450px'}
+            ),
+
+        ],
+            style={'width': '95%',
+                   'margin': 'auto',
+                   'margin-top': '3%'}
+        ),
+        dbc.Row([
+            dbc.Col([dcc.Graph(id='sunburst'),], style={'width': '40%', 'height': '450px'}),
+            dbc.Col([dcc.Graph(id='barchart')], style={'width': '60%', 'height': '450px'}),
+        ])
     ],
     fluid=True,
 )
@@ -84,10 +110,88 @@ def add_rows(n_clicks,url):
         df = get_scanned_pdf()
         df = clean_scanned(df)
         df = join_dfs(df)
-        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment #',
+        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
                                 'article': 'Article', 'justification': 'Justification'})
-        dataframe = df.to_dict('records')
+        df_total = add_scraped_info(df=df)
+        dataframe = df_total.to_dict('records')
     return dataframe
+
+
+@app.callback(
+    Output('network_graph', 'elements'),
+    Input('button', 'n_clicks'),
+    State('url_input', 'value'),
+    #prevent_initial_call=True
+)
+def get_network_graph(n_clicks,url):
+    if n_clicks > 0:
+        save_pdf(url)
+        df = get_scanned_pdf()
+        df = clean_scanned(df)
+        df = join_dfs(df)
+        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
+                                'article': 'Article', 'justification': 'Justification'})
+        elements = get_network_elements(df)
+
+    return elements
+
+
+@app.callback(
+    Output('sunburst', 'figure'),
+    Input('button', 'n_clicks'),
+    State('url_input', 'value'),
+    #prevent_initial_call=True
+)
+def get_sunburst(n_clicks,url):
+    if n_clicks > 0:
+        save_pdf(url)
+        df = get_scanned_pdf()
+        df = clean_scanned(df)
+        df = join_dfs(df)
+        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
+                                'article': 'Article', 'justification': 'Justification'})
+        df = df[['Amendment Number', 'Article']]
+        df['value'] = 1
+        fig = px.sunburst(df, path=['Article', 'Amendment Number'], values='value',
+                          color_discrete_sequence=px.colors.sequential.Reds)
+        fig.update_layout(
+            font_family="sans-serif")
+        fig.update_layout({
+            'plot_bgcolor': '#fcfcfc',
+            'paper_bgcolor': '#fcfcfc',
+        })
+    return(fig)
+
+@app.callback(
+    Output('barchart', 'figure'),
+    Input('button', 'n_clicks'),
+    State('url_input', 'value'),
+    #prevent_initial_call=True
+)
+def get_barchart(n_clicks,url):
+    if n_clicks > 0:
+        save_pdf(url)
+        df = get_scanned_pdf()
+        df = clean_scanned(df)
+        df = join_dfs(df)
+        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
+                                'article': 'Article', 'justification': 'Justification'})
+        df = df[['MEP']]
+        df = df.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
+        fig = px.bar(df, x='Number of amendments', y='MEP', template='plotly_white',
+                     labels={
+                         "MEP": ""
+                     },
+                     color='Number of amendments', color_continuous_scale=px.colors.sequential.Reds)
+        fig.update_layout(
+            font_family="sans-serif")
+        fig.update_layout(yaxis=dict(autorange="reversed"))
+        fig.update_layout(showlegend=False)
+        fig.update_layout({
+            'plot_bgcolor': '#fcfcfc',
+            'paper_bgcolor': '#fcfcfc',
+        })
+    return(fig)
 
 if __name__ == '__main__':
     app.run_server()

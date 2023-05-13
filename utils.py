@@ -6,6 +6,8 @@ import urllib.request
 import re
 from unidecode import unidecode
 import numpy as np
+import dash_cytoscape as cyto
+from bs4 import BeautifulSoup
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
 
@@ -45,7 +47,9 @@ def get_scanned_pdf(path: str = "pdfs/download.pdf") -> pd.DataFrame:
                     for span in line['spans']:
                         xmin, ymin, xmax, ymax = list(span['bbox']) # Get bounding box measurements
                         font_size = span['size']
-                        text = unidecode(span['text']) #
+                        #text = unidecode(span['text'])
+                        #----------------------------
+                        text = span['text']
                         span_font = span['font']
                         is_upper = False
                         is_bold = False
@@ -194,5 +198,121 @@ def join_dfs(df: pd.DataFrame) -> pd.DataFrame:
     return df_total
 
 
+def get_network_elements(df: pd.DataFrame)->list:
+    """
+    Transforms the df obtained by join_dfs into the elements of a network graph
+    :param df: a pandas dataframe obtained by join_df2
+    :return elements: a list containing the elements of a network graph
+    """
+
+    # Create a df containing the combinations of MEPs
+    edges_df = pd.DataFrame()
+    for amendment in df['Amendment Number'].unique():
+        filter_df = df[df['Amendment Number'] == amendment].copy()
+        for mep in filter_df['MEP'].unique():
+            meplist = filter_df[filter_df['MEP'] != mep][['MEP']]
+            meplist = meplist.rename(columns={'MEP': 'node2'})
+            meplist['node1'] = mep
+            #edges_df = edges_df.append(meplist, ignore_index=True)
+            edges_df = pd.concat([edges_df, meplist])
+
+    # Obtain count of combinations
+    edges_df = edges_df.groupby(['node1', 'node2']).size().reset_index().rename(columns={0: 'count'})
+    # Get a dictionary of ids for every mep
+    id_dict = dict(enumerate(edges_df.node1.unique()))
+    id_dict = {y: x for x, y in id_dict.items()}
+
+    # Obtain nodes
+    elements = []
+    for mep in edges_df['node1'].unique():
+        mep_id = id_dict[mep]
+        # {'data': {'id': 'two', 'label': 'Node 2'}}
+        d = {'data': {'id': mep_id, 'label': mep}, 'position': {'x': 75, 'y': 75}}
+        elements.append(d)
+
+    # Obtain edges
+    for index, row in edges_df.iterrows():
+        node1_id = id_dict[row['node1']]
+        node2_id = id_dict[row['node2']]
+        weight = row['count']
+        # {'data': {'source': 'one', 'target': 'two'}}
+        d = {'data': {'source': node1_id, 'target': node2_id, 'weight': weight}}
+        elements.append(d)
+
+    return elements
 
 
+def scrape_info(df: pd.DataFrame,
+                url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
+    """
+    Scrapes information about mep nationality, picture and party from url
+    :param df: df obtained by clean_df
+    :param url: mep directory url
+    :return:
+    """
+    webpage = requests.get(url)
+    html = webpage.text
+    soup = BeautifulSoup(html)
+
+    total_df = pd.DataFrame()  # I create a df to save results
+
+    for mep in df['MEP'].unique():  # For every mep in df I obtain her/his unique webpage on the ep website
+
+        dicti = {"MEP": mep}  # i create a dictionary to save results
+
+        for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
+
+            # I obtain the MEP's picture link, european party name and country from the mep's unique webpage
+
+            x = img.parent.parent.parent.parent
+            href = x['href']
+            webpage2 = requests.get(href)
+            html2 = webpage2.text
+            soup2 = BeautifulSoup(html2)
+
+            for span in soup2.find_all("span", {"class": 'erpl_newshub-photomep'}):  # I obtain the png link
+                img = span.find("img")
+                if img:
+                    picture_link = img['src']
+                    dicti["picture_link"] = picture_link
+
+            for div in soup2.find_all('div', {"class": 'col-12'}):  # I obtain the european party
+                pol_group = div.find('h3')
+                if pol_group:
+                    pol_group = pol_group.text.strip()
+                    dicti["European Group"] = pol_group
+
+                home_group = div.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
+                if home_group:
+                    home_group = home_group.text.strip()  # I obtain the national party + country (will separate them later)
+                    dicti["national"] = home_group
+
+            if "national" not in dicti:
+                dicti["national"] = np.NaN
+            if "European Group" not in dicti:
+                dicti["European Group"] = np.NaN
+            if "picture_link" not in dicti:
+                dicti["picture_link"] = np.NaN
+
+            dicti = pd.DataFrame([dicti])
+            total_df = pd.concat([total_df , dicti], ignore_index=True)
+
+    total_df['Country'] = total_df['national'].str.extract(r'\((.*?)\)', expand=True)
+    total_df = total_df.drop(['national'], axis=1)
+
+    return total_df
+
+
+def add_scraped_info(df: pd.DataFrame,
+                     url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
+    """
+    Joins df and scraped info
+    :param df: df obtained through clean_df
+    :param url: mep directory url
+    :return:
+    """
+    scraped_df = scrape_info(df=df, url=url)
+    scraped_df = scraped_df.drop(['picture_link'], axis = 1)
+    df_total = df.merge(scraped_df, how='left', on='MEP')
+
+    return df_total
