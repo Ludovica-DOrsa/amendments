@@ -8,6 +8,7 @@ from unidecode import unidecode
 import numpy as np
 import dash_cytoscape as cyto
 from bs4 import BeautifulSoup
+import difflib
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
 
@@ -91,12 +92,15 @@ def clean_scanned(df: pd.DataFrame) -> pd.DataFrame:
                           # does not contain "Proposal for a regulation"
                           df['text'], df['meps'])
 
+    df = df[df['meps']!=' ']
+
     # Forward fill amendment number
     df['am_no'] = df['am_no'].ffill()
 
     # Get max x of text proposed by the commission
     df['xmax_comm'] = np.where((df['text'] == 'Text proposed by the Commission')|
-                               (df['text'] == 'Motion for a resolution'), df['xmax'], np.NaN)
+                               (df['text'] == 'Motion for a resolution')|
+                               (df['text'] == 'Present text'), df['xmax'], np.NaN)
     df['xmax_comm'] = df.groupby('am_no')['xmax_comm'].ffill()
     # all text with xmin < xmax_comm is text proposed by the commission
     df['type'] = np.where(df['xmin'] < df['xmax_comm'], 'Text proposed by the Commission', np.NaN)
@@ -121,6 +125,47 @@ def clean_scanned(df: pd.DataFrame) -> pd.DataFrame:
     # If the text is a justification it is neither an amendment or the text proposed by the commission
     df['type'] = np.where(df['justification'].isna() == False, np.NaN, df['type'])
 
+    return df
+
+
+def find_differences(df: pd.DataFrame)-> pd.DataFrame:
+    """
+    Create a new column in df which describes the differences between the text proposed by the commission and the
+    amendment text
+    :param df: pandas dataframe obtained through clean_df
+    :return:
+    """
+    for index, row in df.iterrows():
+        b = row['Amendment']
+        a = row['Text proposed by the Commission']
+        new_text = ""
+        if pd.isnull(a) == False:
+            if pd.isnull(b) == False:
+                m = difflib.SequenceMatcher(a=a, b=b)
+
+                for tag, i1, i2, j1, j2 in m.get_opcodes():
+                    # good = #d9230f
+                    # bad = #139418
+                    if tag == 'replace':
+                        #x = f'<del>{a[i1:i2]}</del>'
+                        x = f"<span style ='color: #d9230f'>{a[i1:i2]}</span>"
+                        new_text = new_text + x
+                        #y = f'<ins>{b[j1:j2]}</ins>'
+                        y = f"<span style ='color: #139418'>{b[j1:j2]}</span>"
+                        new_text = new_text + y
+                    if tag == 'delete':
+                        #x = f'<del>{a[i1:i2]}</del>'
+                        x = f"<span style ='color: #d9230f'>{a[i1:i2]}</span>"
+                        new_text = new_text + x
+                    if tag == 'insert':
+                        #x = f'<ins>{b[j1:j2]}</ins>'
+                        x = f"<span style ='color: #139418'>{b[j1:j2]}</span>"
+                        new_text = new_text + x
+                    if tag == 'equal':
+                        #x = f'{a[i1:i2]}'
+                        x = f"<span style ='color: black'>{a[i1:i2]}</span>"
+                        new_text = new_text + x
+                df.loc[index, 'Modified Text'] = new_text
     return df
 
 
@@ -194,6 +239,11 @@ def join_dfs(df: pd.DataFrame) -> pd.DataFrame:
     df_total = df_total.merge(df_text, on='am_no', how='outer')
 
     df_total = df_total.drop(['nan'], axis = 1)
+    df_total = df_total[df_total['meps']!=""]
+
+    df_total['Amendment'] = df_total['Amendment'].str.removesuffix('Justification')
+    df_total['Amendment'] = df_total['Amendment'].str.removeprefix('Amendment')
+    df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix('Text proposed by the Commission')
 
     return df_total
 
@@ -260,42 +310,46 @@ def scrape_info(df: pd.DataFrame,
 
         dicti = {"MEP": mep}  # i create a dictionary to save results
 
-        for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
+        #for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
+        img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})
+        if len(img)>0:
+            img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})[0]
 
             # I obtain the MEP's picture link, european party name and country from the mep's unique webpage
 
             x = img.parent.parent.parent.parent
-            href = x['href']
-            webpage2 = requests.get(href)
-            html2 = webpage2.text
-            soup2 = BeautifulSoup(html2)
+            if x:
+                href = x['href']
+                webpage2 = requests.get(href)
+                html2 = webpage2.text
+                soup2 = BeautifulSoup(html2)
 
-            for span in soup2.find_all("span", {"class": 'erpl_newshub-photomep'}):  # I obtain the png link
-                img = span.find("img")
-                if img:
-                    picture_link = img['src']
-                    dicti["picture_link"] = picture_link
+                for span in soup2.find_all("span", {"class": 'erpl_newshub-photomep'}):  # I obtain the png link
+                    img = span.find("img")
+                    if img:
+                        picture_link = img['src']
+                        dicti["picture_link"] = picture_link
 
-            for div in soup2.find_all('div', {"class": 'col-12'}):  # I obtain the european party
-                pol_group = div.find('h3')
-                if pol_group:
-                    pol_group = pol_group.text.strip()
-                    dicti["European Group"] = pol_group
+                for div in soup2.find_all('div', {"class": 'col-12'}):  # I obtain the european party
+                    pol_group = div.find('h3')
+                    if pol_group:
+                        pol_group = pol_group.text.strip()
+                        dicti["European Group"] = pol_group
 
-                home_group = div.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
-                if home_group:
-                    home_group = home_group.text.strip()  # I obtain the national party + country (will separate them later)
-                    dicti["national"] = home_group
+                    home_group = div.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
+                    if home_group:
+                        home_group = home_group.text.strip()  # I obtain the national party + country (will separate them later)
+                        dicti["national"] = home_group
 
-            if "national" not in dicti:
-                dicti["national"] = np.NaN
-            if "European Group" not in dicti:
-                dicti["European Group"] = np.NaN
-            if "picture_link" not in dicti:
-                dicti["picture_link"] = np.NaN
+                if "national" not in dicti:
+                    dicti["national"] = np.NaN
+                if "European Group" not in dicti:
+                    dicti["European Group"] = np.NaN
+                if "picture_link" not in dicti:
+                    dicti["picture_link"] = np.NaN
 
-            dicti = pd.DataFrame([dicti])
-            total_df = pd.concat([total_df , dicti], ignore_index=True)
+                dicti = pd.DataFrame([dicti])
+                total_df = pd.concat([total_df , dicti], ignore_index=True)
 
     total_df['Country'] = total_df['national'].str.extract(r'\((.*?)\)', expand=True)
     total_df = total_df.drop(['national'], axis=1)
@@ -306,9 +360,23 @@ def scrape_info(df: pd.DataFrame,
 def add_scraped_info(df: pd.DataFrame,
                      url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
     """
-    Joins df and scraped info
+    Adds new column containing differences in original and amended text. Joins df and scraped info.
     :param df: df obtained through clean_df
     :param url: mep directory url
+    :return:
+    """
+    df = find_differences(df=df)
+    scraped_df = scrape_info(df=df, url=url)
+    scraped_df = scraped_df.drop(['picture_link'], axis = 1)
+    df_total = df.merge(scraped_df, how='left', on='MEP')
+
+    return df_total
+
+def add_scraped_info_no_diff(df: pd.DataFrame,
+                     url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
+    """
+    Joins df and scraped info.
+    :param df: df obtained through clean_df
     :return:
     """
     scraped_df = scrape_info(df=df, url=url)

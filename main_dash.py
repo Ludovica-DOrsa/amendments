@@ -45,6 +45,7 @@ app.layout = dbc.Container(
                 export_format='xlsx',
                 #export_headers='display',
                 #filter_action="native",
+                markdown_options={"html": True},
                 fixed_rows={'headers': True},
                 style_table={'overflowX': 'auto',
                              'overflowY': 'auto',
@@ -69,7 +70,7 @@ app.layout = dbc.Container(
         dbc.Row([
             cyto.Cytoscape(
                 id='network_graph',
-                layout={'name': 'circle'},
+                layout={'name': 'grid'},
                 elements=[],
                 stylesheet = [{'selector': 'node',
                                 'style': {'shape': 'circle',
@@ -79,7 +80,7 @@ app.layout = dbc.Container(
                                 {'selector': 'edge',
                                  'style': {'width': 'data(weight)'}}],
 
-                style={'width': '100%', 'height': '450px'}
+                style={'width': '100%', 'height': '900px'}
             ),
 
         ],
@@ -101,6 +102,7 @@ app.layout = dbc.Container(
 
 @app.callback(
     Output('table', 'data'),
+    Output('table', 'columns'),
     Input('button', 'n_clicks'),
     State('url_input', 'value'),
 )
@@ -114,7 +116,16 @@ def add_rows(n_clicks,url):
                                 'article': 'Article', 'justification': 'Justification'})
         df_total = add_scraped_info(df=df)
         dataframe = df_total.to_dict('records')
-    return dataframe
+        cols = [{"name": "MEP", "id": "MEP"},
+                   {"name": "Amendment #", "id": "Amendment #"},
+                   {"name": "Article", "id": "Article"},
+                   {"name": "Justification", "id": "Justification"},
+                   {"name": "Amendment", "id": "Amendment"},
+                   {"name": "Text proposed by the Commission", "id": "Text proposed by the Commission"},
+                   {"name": "Modified Text", "id": "Modified Text", "presentation": "markdown"},
+                   {"name": "European Group", "id": "European Group"},
+                   {"name": "Country", "id": "Country"}]
+    return dataframe, cols
 
 
 @app.callback(
@@ -178,15 +189,30 @@ def get_barchart(n_clicks,url):
                                 'article': 'Article', 'justification': 'Justification'})
         df = df[['MEP']]
         df = df.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
-        fig = px.bar(df, x='Number of amendments', y='MEP', template='plotly_white',
+
+        df_total = add_scraped_info_no_diff(df=df)
+
+        color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
+                              'European Conservatives and Reformists Group': '#0285fd',
+                              'Renew Europe Group': '#fea607',
+                              'Group of the Greens/European Free Alliance':'#27c201',
+                              'Group of the Progressive Alliance of Socialists and Democrats in the European Parliament':
+                                  '#d41011',
+                              'The Left group in the European Parliament - GUE/NGL':'#4c0203',
+                              'Non-attached Members':'#cbcbcb',
+                              'Identity and Democracy Group':'#879c8f'}
+
+        fig = px.bar(df_total, x='Number of amendments', y='MEP', template='plotly_white',
                      labels={
                          "MEP": ""
                      },
-                     color='Number of amendments', color_continuous_scale=px.colors.sequential.Reds)
+                     color='European Group',
+                     color_discrete_map=color_discrete_map)
         fig.update_layout(
             font_family="sans-serif")
-        fig.update_layout(yaxis=dict(autorange="reversed"))
+       # fig.update_layout(yaxis=dict(autorange="reversed"))
         fig.update_layout(showlegend=False)
+        fig.update_layout(yaxis={'categoryorder': 'total ascending'})
         fig.update_layout({
             'plot_bgcolor': '#fcfcfc',
             'paper_bgcolor': '#fcfcfc',
