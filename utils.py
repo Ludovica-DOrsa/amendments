@@ -9,6 +9,9 @@ import numpy as np
 import dash_cytoscape as cyto
 from bs4 import BeautifulSoup
 import difflib
+import urllib
+import os
+import pathlib
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
 
@@ -240,10 +243,14 @@ def join_dfs(df: pd.DataFrame) -> pd.DataFrame:
 
     df_total = df_total.drop(['nan'], axis = 1)
     df_total = df_total[df_total['meps']!=""]
+    df_total = df_total[df_total["meps"].str.contains(fr'\b\s\b', regex=True, case=False)]
+    df_total = df_total[-df_total["meps"].str.contains('Compromise amendment', regex=False, case=False)]
 
     df_total['Amendment'] = df_total['Amendment'].str.removesuffix('Justification')
     df_total['Amendment'] = df_total['Amendment'].str.removeprefix('Amendment')
     df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix('Text proposed by the Commission')
+    df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix(
+        'Motion for a resolution')
 
     return df_total
 
@@ -278,6 +285,50 @@ def get_network_elements(df: pd.DataFrame)->list:
         mep_id = id_dict[mep]
         # {'data': {'id': 'two', 'label': 'Node 2'}}
         d = {'data': {'id': mep_id, 'label': mep}, 'position': {'x': 75, 'y': 75}}
+        elements.append(d)
+
+    # Obtain edges
+    for index, row in edges_df.iterrows():
+        node1_id = id_dict[row['node1']]
+        node2_id = id_dict[row['node2']]
+        weight = row['count']
+        # {'data': {'source': 'one', 'target': 'two'}}
+        d = {'data': {'source': node1_id, 'target': node2_id, 'weight': weight}}
+        elements.append(d)
+
+    return elements
+
+
+def get_network_elements_v2(df: pd.DataFrame)->list:
+    """
+    Transforms the df obtained by join_dfs into the elements of a network graph
+    :param df: a pandas dataframe obtained by join_df2
+    :return elements: a list containing the elements of a network graph
+    """
+
+    # Create a df containing the combinations of MEPs
+    edges_df = pd.DataFrame()
+    for amendment in df['Amendment Number'].unique():
+        filter_df = df[df['Amendment Number'] == amendment].copy()
+        for mep in filter_df['MEP'].unique():
+            meplist = filter_df[filter_df['MEP'] != mep][['MEP']]
+            meplist = meplist.rename(columns={'MEP': 'node2'})
+            meplist['node1'] = mep
+            #edges_df = edges_df.append(meplist, ignore_index=True)
+            edges_df = pd.concat([edges_df, meplist])
+
+    # Obtain count of combinations
+    edges_df = edges_df.groupby(['node1', 'node2']).size().reset_index().rename(columns={0: 'count'})
+    # Get a dictionary of ids for every mep
+    id_dict = dict(enumerate(edges_df.node1.unique()))
+    id_dict = {y: x for x, y in id_dict.items()}
+
+    # Obtain nodes
+    elements = []
+    for mep in edges_df['node1'].unique():
+        mep_id = id_dict[mep]
+        #img_url = df[df['MEP']==mep]['picture_link'].iloc[0]
+        d = {'classes': 'nopic','data': {'id': mep_id, 'label': mep}, 'position': {'x': 75, 'y': 75}}
         elements.append(d)
 
     # Obtain edges
@@ -367,7 +418,7 @@ def add_scraped_info(df: pd.DataFrame,
     """
     df = find_differences(df=df)
     scraped_df = scrape_info(df=df, url=url)
-    scraped_df = scraped_df.drop(['picture_link'], axis = 1)
+    #scraped_df = scraped_df.drop(['picture_link'], axis = 1)
     df_total = df.merge(scraped_df, how='left', on='MEP')
 
     return df_total

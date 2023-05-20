@@ -36,15 +36,192 @@ app.layout = dbc.Container(
                        'margin-left': '5%'})],
             align="center"),
 
-        dbc.Row([
+        html.Div(id = 'output')
+    ],
+    fluid=True,
+)
+
+
+
+# Callbacks ------------------------------------------------------------------------------------------------------------
+
+@app.callback(
+    Output('output', 'children'),
+    Input('button', 'n_clicks'),
+    State('url_input', 'value'),
+)
+def return_divs(n_clicks,url):
+    if n_clicks > 0:
+        save_pdf(url)
+        df = get_scanned_pdf()
+        df = clean_scanned(df)
+        df = join_dfs(df)
+        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
+                                'article': 'Article', 'justification': 'Justification'})
+        df_total = add_scraped_info(df=df)
+
+        #---------------------------------------------------------------------------------------------------------------
+        # Data table
+        scraped_df = df_total.copy()
+        scraped_df = scraped_df.drop(['picture_link'], axis=1)
+        dataframe = scraped_df.to_dict('records')
+        cols = [{"name": "MEP", "id": "MEP"},
+                   {"name": "Amendment #", "id": "Amendment #"},
+                   {"name": "Article", "id": "Article"},
+                   {"name": "Justification", "id": "Justification"},
+                   {"name": "Amendment", "id": "Amendment"},
+                   {"name": "Text proposed by the Commission", "id": "Text proposed by the Commission"},
+                   {"name": "Modified Text", "id": "Modified Text", "presentation": "markdown"},
+                   {"name": "European Group", "id": "European Group"},
+                   {"name": "Country", "id": "Country"}]
+        #---------------------------------------------------------------------------------------------------------------
+        # Network graph
+
+        stylesheet = [{'selector': 'node',
+          'style': {
+              'label': 'data(label)',
+              'shape': 'circle',
+              'background-color': '#d9230f'
+          }},
+         {'selector': 'edge',
+          'style': {'width': 'data(weight)'}}]
+
+
+        elements = get_network_elements_v2(df_total)
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        # Sunburst
+
+        df_sun = df_total[['Amendment Number', 'Article']]
+        df_sun['value'] = 1
+        fig_sun = px.sunburst(df_sun, path=['Article', 'Amendment Number'], values='value',
+                          color_discrete_sequence=px.colors.sequential.Reds,
+                              title = 'Which were the most amended articles?')
+        fig_sun.update_layout(
+            font_family="sans-serif")
+        fig_sun.update_layout({
+            'plot_bgcolor': '#fcfcfc',
+            'paper_bgcolor': '#fcfcfc',
+        })
+
+        # ---------------------------------------------------------------------------------------------------------------
+        # Barchart
+
+        df_bar = df_total[['MEP']]
+        df_bar = df_bar.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
+        df_bar = add_scraped_info_no_diff(df=df_bar)
+
+        color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
+                              'European Conservatives and Reformists Group': '#0285fd',
+                              'Renew Europe Group': '#fea607',
+                              'Group of the Greens/European Free Alliance': '#27c201',
+                              'Group of the Progressive Alliance of Socialists and Democrats in the European Parliament':
+                                  '#d41011',
+                              'The Left group in the European Parliament - GUE/NGL': '#4c0203',
+                              'Non-attached Members': '#cbcbcb',
+                              'Identity and Democracy Group': '#879c8f'}
+
+        fig_bar = px.bar(df_bar, x='Number of amendments', y='MEP', template='plotly_white',
+                         title = 'Who signed the most amendments?',
+                     labels={
+                         "MEP": ""},
+                     color='European Group',
+                     color_discrete_map=color_discrete_map)
+        fig_bar.update_layout(font_family="sans-serif")
+        fig_bar.update_layout(showlegend=False)
+        fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
+        fig_bar.update_layout({
+            'plot_bgcolor': '#fcfcfc',
+            'paper_bgcolor': '#fcfcfc',
+        })
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        # Cards
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36'}
+        cards = []
+        for mep in df_total['MEP'].unique():
+
+            # get picture link
+            img_url = df_total[df_total['MEP'] == mep]['picture_link'].iloc[0]
+            party = df_total[df_total['MEP'] == mep]['European Group'].iloc[0]
+            country = df_total[df_total['MEP'] == mep]['Country'].iloc[0]
+
+            if pd.isna(img_url)==False:
+                response = requests.get(img_url, stream=True, headers=headers)
+
+                # save picture
+                with open(f'C:\\Users\\39366\\Desktop\\Commission_Amendments\\assets\\{mep}.jpg', 'bw') as img_file:
+                    img_file.write(response.content)
+
+                path_img = f'C:\\Users\\39366\\Desktop\\Commission_Amendments\\assets\\{mep}.jpg'
+                card = dbc.Card(
+                    [
+                        dbc.CardImg(
+                            #src=path_img,
+                            src = app.get_asset_url(f'{mep}.jpg'),
+                            top=True),
+                        dbc.CardBody(
+                            [
+                                html.H4(f"{mep}", className="card-title"),
+                                html.P(
+                                    f"Country: {country}",
+                                    className="card-text",
+                                ),
+                                html.Br(),
+                                html.P(
+                                    f"European Group: {party}",
+                                    className="card-text",
+                                )
+                            ]
+                        ),
+                    ],
+                    style={"width": "16rem",
+                           "margin-left":"1%",
+                           'margin-bottom': '1%', },
+                )
+                cards.append(card)
+
+            else:
+                card = dbc.Card(
+                    [
+                        dbc.CardBody(
+                            [
+                                html.H4(f"{mep}", className="card-title"),
+                                html.P(
+                                    f"Country: {country}",
+                                    className="card-text",
+                                ),
+                                #html.Br(style={'display': 'block', 'margin-bottom': '0em'}),
+                                html.P(
+                                    f"European Group: {party}",
+                                    className="card-text",
+                                ),
+                            ]
+                        ),
+                    ],
+                    style={"width": "16rem",
+                           "margin-left": "1%",
+                           'margin-bottom': '1%', },
+                )
+                cards.append(card)
+
+        #---------------------------------------------------------------------------------------------------------------
+        # Dynamic layout
+
+        dynamic_layout = [
+            dbc.Row([
             dash_table.DataTable(
                 id='table',
+                data = dataframe,
+                columns = cols,
                 row_selectable="multi",
                 sort_action="native",
                 sort_mode="multi",
                 export_format='xlsx',
-                #export_headers='display',
-                #filter_action="native",
+                # export_headers='display',
+                # filter_action="native",
                 markdown_options={"html": True},
                 fixed_rows={'headers': True},
                 style_table={'overflowX': 'auto',
@@ -60,27 +237,22 @@ app.layout = dbc.Container(
                     'width': '180px',
                     'maxWidth': '180px',
                     'whiteSpace': 'normal',
-                    'font-family':'sans-serif',
+                    'font-family': 'sans-serif',
                     'textAlign': 'left'},
 
-    ),
-        ], style={'width':'95%',
+            ),
+        ], style={'width': '95%',
                   'margin': 'auto',
-                  'margin-top':'3%'}),
+                  'margin-top': '3%'}),
+        html.H5("Who worked with whom?", style={'margin-left': '4%',
+                  'margin-top': '4%'}),
         dbc.Row([
             cyto.Cytoscape(
                 id='network_graph',
                 layout={'name': 'grid'},
-                elements=[],
-                stylesheet = [{'selector': 'node',
-                                'style': {'shape': 'circle',
-                                'label': 'data(label)',
-                                'background-color': '#d9230f',
-                                "font-family": "sans-serif",}},
-                                {'selector': 'edge',
-                                 'style': {'width': 'data(weight)'}}],
-
-                style={'width': '100%', 'height': '900px'}
+                elements=elements,
+                stylesheet=stylesheet,
+                style={'width': '100%', 'height': '450px'}
             ),
 
         ],
@@ -89,135 +261,20 @@ app.layout = dbc.Container(
                    'margin-top': '3%'}
         ),
         dbc.Row([
-            dbc.Col([dcc.Graph(id='sunburst'),], style={'width': '40%', 'height': '450px'}),
-            dbc.Col([dcc.Graph(id='barchart')], style={'width': '60%', 'height': '450px'}),
-        ])
-    ],
-    fluid=True,
-)
+            dbc.Col([dcc.Graph(id='sunburst', figure = fig_sun)], style={'width': '40%', 'height': '450px'}),
+            dbc.Col([dcc.Graph(id='barchart', figure = fig_bar)], style={'width': '60%', 'height': '450px'}),
+        ]),
+            html.H5("Who are the MEPs involved?",  style={'margin-left': '4%',
+                  'margin-top': '4%', }),
+            dbc.Col(dbc.Row(children=cards,
+                    style={'overflow-x': 'scroll', 'margin-left': '4%', 'margin-right': '4%', 'height': '400px',},
+                    id="cards-output",
+                    )),
+        ]
+    return dynamic_layout
 
 
 
-# Callbacks ------------------------------------------------------------------------------------------------------------
-
-@app.callback(
-    Output('table', 'data'),
-    Output('table', 'columns'),
-    Input('button', 'n_clicks'),
-    State('url_input', 'value'),
-)
-def add_rows(n_clicks,url):
-    if n_clicks > 0:
-        save_pdf(url)
-        df = get_scanned_pdf()
-        df = clean_scanned(df)
-        df = join_dfs(df)
-        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
-                                'article': 'Article', 'justification': 'Justification'})
-        df_total = add_scraped_info(df=df)
-        dataframe = df_total.to_dict('records')
-        cols = [{"name": "MEP", "id": "MEP"},
-                   {"name": "Amendment #", "id": "Amendment #"},
-                   {"name": "Article", "id": "Article"},
-                   {"name": "Justification", "id": "Justification"},
-                   {"name": "Amendment", "id": "Amendment"},
-                   {"name": "Text proposed by the Commission", "id": "Text proposed by the Commission"},
-                   {"name": "Modified Text", "id": "Modified Text", "presentation": "markdown"},
-                   {"name": "European Group", "id": "European Group"},
-                   {"name": "Country", "id": "Country"}]
-    return dataframe, cols
-
-
-@app.callback(
-    Output('network_graph', 'elements'),
-    Input('button', 'n_clicks'),
-    State('url_input', 'value'),
-    #prevent_initial_call=True
-)
-def get_network_graph(n_clicks,url):
-    if n_clicks > 0:
-        save_pdf(url)
-        df = get_scanned_pdf()
-        df = clean_scanned(df)
-        df = join_dfs(df)
-        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
-                                'article': 'Article', 'justification': 'Justification'})
-        elements = get_network_elements(df)
-
-    return elements
-
-
-@app.callback(
-    Output('sunburst', 'figure'),
-    Input('button', 'n_clicks'),
-    State('url_input', 'value'),
-    #prevent_initial_call=True
-)
-def get_sunburst(n_clicks,url):
-    if n_clicks > 0:
-        save_pdf(url)
-        df = get_scanned_pdf()
-        df = clean_scanned(df)
-        df = join_dfs(df)
-        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
-                                'article': 'Article', 'justification': 'Justification'})
-        df = df[['Amendment Number', 'Article']]
-        df['value'] = 1
-        fig = px.sunburst(df, path=['Article', 'Amendment Number'], values='value',
-                          color_discrete_sequence=px.colors.sequential.Reds)
-        fig.update_layout(
-            font_family="sans-serif")
-        fig.update_layout({
-            'plot_bgcolor': '#fcfcfc',
-            'paper_bgcolor': '#fcfcfc',
-        })
-    return(fig)
-
-@app.callback(
-    Output('barchart', 'figure'),
-    Input('button', 'n_clicks'),
-    State('url_input', 'value'),
-    #prevent_initial_call=True
-)
-def get_barchart(n_clicks,url):
-    if n_clicks > 0:
-        save_pdf(url)
-        df = get_scanned_pdf()
-        df = clean_scanned(df)
-        df = join_dfs(df)
-        df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
-                                'article': 'Article', 'justification': 'Justification'})
-        df = df[['MEP']]
-        df = df.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
-
-        df_total = add_scraped_info_no_diff(df=df)
-
-        color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
-                              'European Conservatives and Reformists Group': '#0285fd',
-                              'Renew Europe Group': '#fea607',
-                              'Group of the Greens/European Free Alliance':'#27c201',
-                              'Group of the Progressive Alliance of Socialists and Democrats in the European Parliament':
-                                  '#d41011',
-                              'The Left group in the European Parliament - GUE/NGL':'#4c0203',
-                              'Non-attached Members':'#cbcbcb',
-                              'Identity and Democracy Group':'#879c8f'}
-
-        fig = px.bar(df_total, x='Number of amendments', y='MEP', template='plotly_white',
-                     labels={
-                         "MEP": ""
-                     },
-                     color='European Group',
-                     color_discrete_map=color_discrete_map)
-        fig.update_layout(
-            font_family="sans-serif")
-       # fig.update_layout(yaxis=dict(autorange="reversed"))
-        fig.update_layout(showlegend=False)
-        fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-        fig.update_layout({
-            'plot_bgcolor': '#fcfcfc',
-            'paper_bgcolor': '#fcfcfc',
-        })
-    return(fig)
 
 if __name__ == '__main__':
     app.run_server()
