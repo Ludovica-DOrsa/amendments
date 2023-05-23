@@ -152,10 +152,10 @@ def return_divs(n_clicks,url):
                 response = requests.get(img_url, stream=True, headers=headers)
 
                 # save picture
-                with open(f'C:\\Users\\39366\\Desktop\\Commission_Amendments\\assets\\{mep}.jpg', 'bw') as img_file:
+                with open(f'assets\\{mep}.jpg', 'bw') as img_file:
                     img_file.write(response.content)
 
-                path_img = f'C:\\Users\\39366\\Desktop\\Commission_Amendments\\assets\\{mep}.jpg'
+                path_img = f'assets\\{mep}.jpg'
                 card = dbc.Card(
                     [
                         dbc.CardImg(
