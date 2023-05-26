@@ -5,11 +5,13 @@ import plotly.graph_objs as go
 from dash import Input, Output, dcc, html, State, dash_table
 from utils import *
 import plotly.express as px
+import gunicorn
 
 
-app = dash.Dash(external_stylesheets=[dbc.themes.SIMPLEX,
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SIMPLEX,
                                       'https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap',
                                       ])
+server = app.server
 
 app.css.config.serve_locally = True
 
