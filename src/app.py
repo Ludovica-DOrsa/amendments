@@ -6,11 +6,18 @@ from dash import Input, Output, dcc, html, State, dash_table
 from utils import *
 import plotly.express as px
 import gunicorn
+from dash.long_callback import CeleryLongCallbackManager
+from celery import Celery
 
+celery_app = Celery(
+    __name__, broker="redis://localhost:6379/0", backend="redis://localhost:6379/1"
+)
+long_callback_manager = CeleryLongCallbackManager(celery_app)
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SIMPLEX,
-                                      'https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap',
-                                      ])
+app = dash.Dash(__name__,
+                external_stylesheets=[dbc.themes.SIMPLEX,
+                                      'https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap'],
+                long_callback_manager=long_callback_manager)
 server = app.server
 
 app.css.config.serve_locally = True
