@@ -86,3 +86,5 @@ visdcc==0.0.50
 wcwidth==0.2.6
 yarg==0.1.9
 yolk3k==0.9
+
+whitenoise~=6.4.0

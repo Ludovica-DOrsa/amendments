@@ -9,6 +9,7 @@ import gunicorn
 from dash.exceptions import PreventUpdate
 from dash.long_callback import DiskcacheLongCallbackManager
 import diskcache
+from whitenoise import WhiteNoise
 
 cache = diskcache.Cache('./cache')
 lcm = DiskcacheLongCallbackManager(cache)
@@ -19,6 +20,7 @@ app = dash.Dash(__name__,
                 long_callback_manager=lcm)
 
 server = app.server
+server.wsgi_app = WhiteNoise(server.wsgi_app, root='static/')
 
 app.css.config.serve_locally = True
 
@@ -165,14 +167,14 @@ def return_divs(n_clicks, url):
                     response = requests.get(img_url, stream=True, headers=headers)
 
                     # save picture
-                    with open(f'assets\\{id_mep}.jpg', 'bw') as img_file:
+                    with open(f'static\\{id_mep}.jpg', 'bw') as img_file:
                         img_file.write(response.content)
 
                     card = dbc.Card(
                         [
                             dbc.CardImg(
                                 # src=path_img,
-                                src=app.get_asset_url(f'{id_mep}.jpg'),
+                                src=f'static\\{id_mep}.jpg', alt='image',
                                 top=True),
                             dbc.CardBody(
                                 [
