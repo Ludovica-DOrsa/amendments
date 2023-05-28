@@ -152,26 +152,27 @@ def return_divs(n_clicks, url):
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36'}
             cards = []
+            df_total['id'] = df_total['MEP'].map(hash)
             for mep in df_total['MEP'].unique():
 
                 # get picture link
                 img_url = df_total[df_total['MEP'] == mep]['picture_link'].iloc[0]
                 party = df_total[df_total['MEP'] == mep]['European Group'].iloc[0]
                 country = df_total[df_total['MEP'] == mep]['Country'].iloc[0]
+                id_mep = df_total[df_total['MEP'] == mep]['id'].iloc[0]
 
                 if pd.isna(img_url) == False:
                     response = requests.get(img_url, stream=True, headers=headers)
 
                     # save picture
-                    with open(f'assets\\{mep}.jpg', 'bw') as img_file:
+                    with open(f'assets\\{id_mep}.jpg', 'bw') as img_file:
                         img_file.write(response.content)
 
-                    path_img = f'assets\\{mep}.jpg'
                     card = dbc.Card(
                         [
                             dbc.CardImg(
                                 # src=path_img,
-                                src=app.get_asset_url(f'{mep}.jpg'),
+                                src=app.get_asset_url(f'{id_mep}.jpg'),
                                 top=True),
                             dbc.CardBody(
                                 [
