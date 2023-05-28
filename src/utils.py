@@ -4,7 +4,6 @@ import requests
 import fitz
 import urllib.request
 import re
-from unidecode import unidecode
 import numpy as np
 import dash_cytoscape as cyto
 from bs4 import BeautifulSoup
@@ -15,7 +14,8 @@ import pathlib
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
 
-def save_pdf(url: str, name: str|None = None):
+
+def save_pdf(url: str, name: str | None = None):
     """
     Retrieves pdf from url and saves it in pdf folden
     :param url: a url like https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf
@@ -34,25 +34,25 @@ def get_scanned_pdf(path: str = "pdfs/download.pdf") -> pd.DataFrame:
     :param path: path of the file
     :return span_df: a pandas dataframe
     """
-    doc = fitz.open(path) # Open pdf
+    doc = fitz.open(path)  # Open pdf
     block_dict = {}
     page_num = 1
-    for page in doc: # Iterate all pages in the document
-        file_dict = page.get_text('dict') # Get the page dictionary
-        block = file_dict['blocks'] # Get the block information
-        block_dict[page_num] = block # Store in block dictionary
-        page_num += 1 # Increase the page value by 1
+    for page in doc:  # Iterate all pages in the document
+        file_dict = page.get_text('dict')  # Get the page dictionary
+        block = file_dict['blocks']  # Get the block information
+        block_dict[page_num] = block  # Store in block dictionary
+        page_num += 1  # Increase the page value by 1
 
     rows = []
-    for page_num, blocks in block_dict.items(): # Iterate over blocks and pages
+    for page_num, blocks in block_dict.items():  # Iterate over blocks and pages
         for block in blocks:
             if block['type'] == 0:
                 for line in block['lines']:
                     for span in line['spans']:
-                        xmin, ymin, xmax, ymax = list(span['bbox']) # Get bounding box measurements
+                        xmin, ymin, xmax, ymax = list(span['bbox'])  # Get bounding box measurements
                         font_size = span['size']
-                        #text = unidecode(span['text'])
-                        #----------------------------
+                        # text = unidecode(span['text'])
+                        # ----------------------------
                         text = span['text']
                         span_font = span['font']
                         is_upper = False
@@ -61,9 +61,11 @@ def get_scanned_pdf(path: str = "pdfs/download.pdf") -> pd.DataFrame:
                             is_bold = True
                         if re.sub("[\(\[].*?[\)\]]", "", text).isupper():
                             is_upper = True
-                        if text.replace(" ","") !=  "":
+                        if text.replace(" ", "") != "":
                             rows.append((xmin, ymin, xmax, ymax, text, is_upper, is_bold, span_font, font_size))
-                            span_df = pd.DataFrame(rows, columns=['xmin','ymin','xmax','ymax', 'text', 'is_upper','is_bold','span_font', 'font_size'])
+                            span_df = pd.DataFrame(rows, columns=['xmin', 'ymin', 'xmax', 'ymax',
+                                                                  'text', 'is_upper', 'is_bold',
+                                                                  'span_font', 'font_size'])
     return span_df
 
 
@@ -80,29 +82,32 @@ def clean_scanned(df: pd.DataFrame) -> pd.DataFrame:
     # Create amendment number
     df['am_no'] = np.where(df.text.str.contains('Amendment [0-9]+', regex=True, na=False) == True, df['text'], np.NaN)
 
-    #Only keep digits
+    # Only keep digits
     df['am_no'] = df['am_no'].str.replace(r'\D', '', regex=True)
     df['am_no'] = df['am_no'].str.replace(' ', '', regex=False)
     # The row below the amendment number contains MEP names
     df['meps'] = np.where(df['am_no'].shift(1).isna() == False, df['text'], np.NaN)
 
     # Occasionally the rows below also contain MEP names.
-    # If the row above contains MEP names and the current does not contain "Proposal for a regulation/directive/decision/resolution",
+    # If the row above contains MEP names and the current does not contain
+    # "Proposal for a regulation/directive/decision/resolution",
     # it also contains MEP names
     df['meps'] = np.where((df['meps'].shift(1).isna() == False) &  # Previous row contains meps
-                          ((df['text'].str.contains(r'((\bProposal\b)|(\bMotion\b)) for a ((\bregulation\b)|(\bdirective\b)|(\bdecision\b)|(\bresolution\b))',
-                                                   regex=True, na=False) == False)),
+                          ((df['text'].str.contains(
+                              r'((\bProposal\b)|(\bMotion\b)) for a ((\bregulation\b)|(\bdirective\b)|(\bdecision\b)|(\bresolution\b))',
+                              regex=True, na=False) == False)),
                           # does not contain "Proposal for a regulation"
                           df['text'], df['meps'])
 
-    df = df[df['meps']!=' ']
+    df = df[df['meps'] != ' ']
 
     # Forward fill amendment number
     df['am_no'] = df['am_no'].ffill()
 
     # Get max x of text proposed by the commission
-    df['xmax_comm'] = np.where((df['text'] == 'Text proposed by the Commission')|
-                               (df['text'] == 'Motion for a resolution')|
+    df['xmax_comm'] = np.where((df['text'] == 'Text proposed by the Commission') |
+                               (df['text'] == 'Motion for a resolution') |
+                               (df['text'] == 'Draft opinion') |
                                (df['text'] == 'Present text'), df['xmax'], np.NaN)
     df['xmax_comm'] = df.groupby('am_no')['xmax_comm'].ffill()
     # all text with xmin < xmax_comm is text proposed by the commission
@@ -111,12 +116,13 @@ def clean_scanned(df: pd.DataFrame) -> pd.DataFrame:
     df['type'] = np.where(df['xmin'] > df['xmax_comm'], 'Amendment', df['type'])
 
     # Get article (the row below "Proposal for a regulation/directive/decision/resolution")
-    #((\bregulation\b)|(\bdirective\b)|(\bdecision\b)|(\bresolution\b))
-    df['article'] = np.where((df['text'].shift() == 'Proposal for a regulation')|
-                             (df['text'].shift() == 'Proposal for a directive')|
-                             (df['text'].shift() == 'Proposal for a decision')|
-                             (df['text'].shift() == 'Proposal for a resolution')|
-                             (df['text'].shift() == 'Motion for a resolution')
+    # ((\bregulation\b)|(\bdirective\b)|(\bdecision\b)|(\bresolution\b))
+    df['article'] = np.where((df['text'].shift() == 'Proposal for a regulation') |
+                             (df['text'].shift() == 'Proposal for a directive') |
+                             (df['text'].shift() == 'Proposal for a decision') |
+                             (df['text'].shift() == 'Proposal for a resolution') |
+                             (df['text'].shift() == 'Motion for a resolution') |
+                             (df['text'].shift() == 'Draft opinion')
                              , df['text'], np.NaN)
 
     # Get justification - text below "Justification"
@@ -131,7 +137,7 @@ def clean_scanned(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def find_differences(df: pd.DataFrame)-> pd.DataFrame:
+def find_differences(df: pd.DataFrame) -> pd.DataFrame:
     """
     Create a new column in df which describes the differences between the text proposed by the commission and the
     amendment text
@@ -150,22 +156,22 @@ def find_differences(df: pd.DataFrame)-> pd.DataFrame:
                     # good = #d9230f
                     # bad = #139418
                     if tag == 'replace':
-                        #x = f'<del>{a[i1:i2]}</del>'
+                        # x = f'<del>{a[i1:i2]}</del>'
                         x = f"<span style ='color: #d9230f'>{a[i1:i2]}</span>"
                         new_text = new_text + x
-                        #y = f'<ins>{b[j1:j2]}</ins>'
+                        # y = f'<ins>{b[j1:j2]}</ins>'
                         y = f"<span style ='color: #139418'>{b[j1:j2]}</span>"
                         new_text = new_text + y
                     if tag == 'delete':
-                        #x = f'<del>{a[i1:i2]}</del>'
+                        # x = f'<del>{a[i1:i2]}</del>'
                         x = f"<span style ='color: #d9230f'>{a[i1:i2]}</span>"
                         new_text = new_text + x
                     if tag == 'insert':
-                        #x = f'<ins>{b[j1:j2]}</ins>'
+                        # x = f'<ins>{b[j1:j2]}</ins>'
                         x = f"<span style ='color: #139418'>{b[j1:j2]}</span>"
                         new_text = new_text + x
                     if tag == 'equal':
-                        #x = f'{a[i1:i2]}'
+                        # x = f'{a[i1:i2]}'
                         x = f"<span style ='color: black'>{a[i1:i2]}</span>"
                         new_text = new_text + x
                 df.loc[index, 'Modified Text'] = new_text
@@ -207,7 +213,7 @@ def get_justification_amendment(df: pd.DataFrame) -> pd.DataFrame:
     # Get MEP-Amendment correspondence
     subdf = df[['justification', 'am_no']].copy()
     subdf = subdf.dropna()
-    subdf = subdf.groupby('am_no', as_index=False).agg({'justification' : ' '.join})
+    subdf = subdf.groupby('am_no', as_index=False).agg({'justification': ' '.join})
     return subdf
 
 
@@ -241,21 +247,26 @@ def join_dfs(df: pd.DataFrame) -> pd.DataFrame:
     df_total = df_total.merge(df_just, on='am_no', how='outer')
     df_total = df_total.merge(df_text, on='am_no', how='outer')
 
-    df_total = df_total.drop(['nan'], axis = 1)
-    df_total = df_total[df_total['meps']!=""]
+    df_total = df_total.drop(['nan'], axis=1)
+    df_total = df_total[df_total['meps'] != ""]
+    df_total = df_total[df_total['meps'] != "Draft opinion"]
     df_total = df_total[df_total["meps"].str.contains(fr'\b\s\b', regex=True, case=False)]
     df_total = df_total[-df_total["meps"].str.contains('Compromise amendment', regex=False, case=False)]
 
     df_total['Amendment'] = df_total['Amendment'].str.removesuffix('Justification')
     df_total['Amendment'] = df_total['Amendment'].str.removeprefix('Amendment')
-    df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix('Text proposed by the Commission')
+    df_total['Amendment'] = df_total['Amendment'].str.removeprefix('Draft opinion')
+    df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix(
+        'Text proposed by the Commission')
     df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix(
         'Motion for a resolution')
+    df_total['Text proposed by the Commission'] = df_total['Text proposed by the Commission'].str.removeprefix(
+        'Draft opinion')
 
     return df_total
 
 
-def get_network_elements(df: pd.DataFrame)->list:
+def get_network_elements(df: pd.DataFrame) -> list:
     """
     Transforms the df obtained by join_dfs into the elements of a network graph
     :param df: a pandas dataframe obtained by join_df2
@@ -270,7 +281,7 @@ def get_network_elements(df: pd.DataFrame)->list:
             meplist = filter_df[filter_df['MEP'] != mep][['MEP']]
             meplist = meplist.rename(columns={'MEP': 'node2'})
             meplist['node1'] = mep
-            #edges_df = edges_df.append(meplist, ignore_index=True)
+            # edges_df = edges_df.append(meplist, ignore_index=True)
             edges_df = pd.concat([edges_df, meplist])
 
     # Obtain count of combinations
@@ -299,7 +310,7 @@ def get_network_elements(df: pd.DataFrame)->list:
     return elements
 
 
-def get_network_elements_v2(df: pd.DataFrame)->list:
+def get_network_elements_v2(df: pd.DataFrame) -> list:
     """
     Transforms the df obtained by join_dfs into the elements of a network graph
     :param df: a pandas dataframe obtained by join_df2
@@ -314,7 +325,7 @@ def get_network_elements_v2(df: pd.DataFrame)->list:
             meplist = filter_df[filter_df['MEP'] != mep][['MEP']]
             meplist = meplist.rename(columns={'MEP': 'node2'})
             meplist['node1'] = mep
-            #edges_df = edges_df.append(meplist, ignore_index=True)
+            # edges_df = edges_df.append(meplist, ignore_index=True)
             edges_df = pd.concat([edges_df, meplist])
 
     # Obtain count of combinations
@@ -327,8 +338,8 @@ def get_network_elements_v2(df: pd.DataFrame)->list:
     elements = []
     for mep in edges_df['node1'].unique():
         mep_id = id_dict[mep]
-        #img_url = df[df['MEP']==mep]['picture_link'].iloc[0]
-        d = {'classes': 'nopic','data': {'id': mep_id, 'label': mep}, 'position': {'x': 75, 'y': 75}}
+        # img_url = df[df['MEP']==mep]['picture_link'].iloc[0]
+        d = {'classes': 'nopic', 'data': {'id': mep_id, 'label': mep}, 'position': {'x': 75, 'y': 75}}
         elements.append(d)
 
     # Obtain edges
@@ -353,7 +364,7 @@ def scrape_info(df: pd.DataFrame,
     """
     webpage = requests.get(url)
     html = webpage.text
-    soup = BeautifulSoup(html)
+    soup = BeautifulSoup(html, features="html.parser")
 
     total_df = pd.DataFrame()  # I create a df to save results
 
@@ -361,9 +372,9 @@ def scrape_info(df: pd.DataFrame,
 
         dicti = {"MEP": mep}  # i create a dictionary to save results
 
-        #for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
+        # for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
         img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})
-        if len(img)>0:
+        if len(img) > 0:
             img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})[0]
 
             # I obtain the MEP's picture link, european party name and country from the mep's unique webpage
@@ -373,7 +384,7 @@ def scrape_info(df: pd.DataFrame,
                 href = x['href']
                 webpage2 = requests.get(href)
                 html2 = webpage2.text
-                soup2 = BeautifulSoup(html2)
+                soup2 = BeautifulSoup(html2, features="html.parser")
 
                 for span in soup2.find_all("span", {"class": 'erpl_newshub-photomep'}):  # I obtain the png link
                     img = span.find("img")
@@ -389,7 +400,8 @@ def scrape_info(df: pd.DataFrame,
 
                     home_group = div.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
                     if home_group:
-                        home_group = home_group.text.strip()  # I obtain the national party + country (will separate them later)
+                        home_group = home_group.text.strip()
+                        # I obtain the national party + country (will separate them later)
                         dicti["national"] = home_group
 
                 if "national" not in dicti:
@@ -400,7 +412,7 @@ def scrape_info(df: pd.DataFrame,
                     dicti["picture_link"] = np.NaN
 
                 dicti = pd.DataFrame([dicti])
-                total_df = pd.concat([total_df , dicti], ignore_index=True)
+                total_df = pd.concat([total_df, dicti], ignore_index=True)
 
     total_df['Country'] = total_df['national'].str.extract(r'\((.*?)\)', expand=True)
     total_df = total_df.drop(['national'], axis=1)
@@ -418,20 +430,22 @@ def add_scraped_info(df: pd.DataFrame,
     """
     df = find_differences(df=df)
     scraped_df = scrape_info(df=df, url=url)
-    #scraped_df = scraped_df.drop(['picture_link'], axis = 1)
+    # scraped_df = scraped_df.drop(['picture_link'], axis = 1)
     df_total = df.merge(scraped_df, how='left', on='MEP')
 
     return df_total
 
+
 def add_scraped_info_no_diff(df: pd.DataFrame,
-                     url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
+                             url: str = 'https://www.europarl.europa.eu/meps/en/directory/all/all') -> pd.DataFrame:
     """
     Joins df and scraped info.
+    :param url:
     :param df: df obtained through clean_df
     :return:
     """
     scraped_df = scrape_info(df=df, url=url)
-    scraped_df = scraped_df.drop(['picture_link'], axis = 1)
+    scraped_df = scraped_df.drop(['picture_link'], axis=1)
     df_total = df.merge(scraped_df, how='left', on='MEP')
 
     return df_total
