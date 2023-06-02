@@ -165,18 +165,17 @@ def return_divs(n_clicks, url):
 
                 if pd.isna(img_url) == False:
                     #response = requests.get(img_url, stream=True, headers=headers)
-                    response = requests.get(img_url, stream=True)
+                    #response = requests.get(img_url, stream=True)
 
                     # save picture
-                    with open(f'assets\\{id_mep}.png', 'bw') as img_file:
-                        img_file.write(response.content)
+                    #with open(f'assets\\{id_mep}.png', 'bw') as img_file:
+                        #img_file.write(response.content)
 
                     card = dbc.Card(
                         [
                             dbc.CardImg(
-                                # src=path_img,
-                                src=f'assets\\{id_mep}.png', alt='image',
-                                #src=f'assets\\dice.png', alt='image',
+                                #src=f'assets\\{id_mep}.png', alt='image',
+                                src=img_url, alt='image',
                                 top=True),
                             dbc.CardBody(
                                 [
