@@ -174,7 +174,8 @@ def return_divs(n_clicks, url):
                         [
                             dbc.CardImg(
                                 # src=path_img,
-                                src=f'assets\\{id_mep}.jpg', alt='image',
+                                #src=f'assets\\{id_mep}.jpg', alt='image',
+                                src=f'assets\\dice.png', alt='image',
                                 top=True),
                             dbc.CardBody(
                                 [
