@@ -167,15 +167,15 @@ def return_divs(n_clicks, url):
                     response = requests.get(img_url, stream=True, headers=headers)
 
                     # save picture
-                    with open(f'assets\\{id_mep}.jpg', 'bw') as img_file:
+                    with open(f'assets\\{id_mep}.png', 'bw') as img_file:
                         img_file.write(response.content)
 
                     card = dbc.Card(
                         [
                             dbc.CardImg(
                                 # src=path_img,
-                                #src=f'assets\\{id_mep}.jpg', alt='image',
-                                src=f'assets\\dice.png', alt='image',
+                                src=f'assets\\{id_mep}.png', alt='image',
+                                #src=f'assets\\dice.png', alt='image',
                                 top=True),
                             dbc.CardBody(
                                 [
