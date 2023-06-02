@@ -164,7 +164,8 @@ def return_divs(n_clicks, url):
                 id_mep = df_total[df_total['MEP'] == mep]['id'].iloc[0]
 
                 if pd.isna(img_url) == False:
-                    response = requests.get(img_url, stream=True, headers=headers)
+                    #response = requests.get(img_url, stream=True, headers=headers)
+                    response = requests.get(img_url, stream=True)
 
                     # save picture
                     with open(f'assets\\{id_mep}.png', 'bw') as img_file:
