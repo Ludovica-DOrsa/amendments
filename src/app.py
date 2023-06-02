@@ -151,8 +151,8 @@ def return_divs(n_clicks, url):
 
             # ---------------------------------------------------------------------------------------------------------------
             # Cards
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36'}
+            #headers = {
+            #    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36'}
             cards = []
             df_total['id'] = df_total['MEP'].map(hash)
             for mep in df_total['MEP'].unique():
