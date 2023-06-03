@@ -1,1 +1,2 @@
-A webapp for downloading and processing pdfs from https://www.europarl.europa.eu/committees/en/documents/search?committeeMnemoCode=&textualSearchMode=TITLE&textualSearch=&documentTypeCode=AMCO&reporterPersId=&procedureYear=&procedureNum=&procedureCodeType=&peNumber=&sessionDocumentDocTypePrefix=&sessionDocumentNumber=&sessionDocumentYear=&documentDateFrom=&documentDateTo=&meetingDateFrom=&meetingDateTo=&performSearch=true&term=9&page=0
+A webapp for downloading and processing European Parliament amendment documents. 
+Deployed at https://ep-analyser.onrender.com/. 
