@@ -11,6 +11,8 @@ import difflib
 import urllib
 import os
 import pathlib
+import time
+from datetime import timedelta
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
 
@@ -34,7 +36,12 @@ def get_scanned_pdf(path: str = "pdfs/download.pdf") -> pd.DataFrame:
     :param path: path of the file
     :return span_df: a pandas dataframe
     """
+    start = time.time()
     doc = fitz.open(path)  # Open pdf
+    end = time.time()
+    print('get_scanned_pdf: fitz.open: ', timedelta(seconds=end - start))
+
+    start = time.time()
     block_dict = {}
     page_num = 1
     for page in doc:  # Iterate all pages in the document
@@ -42,30 +49,32 @@ def get_scanned_pdf(path: str = "pdfs/download.pdf") -> pd.DataFrame:
         block = file_dict['blocks']  # Get the block information
         block_dict[page_num] = block  # Store in block dictionary
         page_num += 1  # Increase the page value by 1
+    end = time.time()
+    print('get_scanned_pdf: store blocks: ', timedelta(seconds=end - start))
 
-    rows = []
-    for page_num, blocks in block_dict.items():  # Iterate over blocks and pages
-        for block in blocks:
-            if block['type'] == 0:
-                for line in block['lines']:
-                    for span in line['spans']:
-                        xmin, ymin, xmax, ymax = list(span['bbox'])  # Get bounding box measurements
-                        font_size = span['size']
-                        # text = unidecode(span['text'])
-                        # ----------------------------
-                        text = span['text']
-                        span_font = span['font']
-                        is_upper = False
-                        is_bold = False
-                        if "bold" in span_font.lower():
-                            is_bold = True
-                        if re.sub("[\(\[].*?[\)\]]", "", text).isupper():
-                            is_upper = True
-                        if text.replace(" ", "") != "":
-                            rows.append((xmin, ymin, xmax, ymax, text, is_upper, is_bold, span_font, font_size))
-                            span_df = pd.DataFrame(rows, columns=['xmin', 'ymin', 'xmax', 'ymax',
-                                                                  'text', 'is_upper', 'is_bold',
-                                                                  'span_font', 'font_size'])
+    start = time.time()
+    rows = [
+        (
+            xmin, ymin, xmax, ymax, text,
+            True if "bold" in span_font.lower() else False,
+            True if re.sub("[\(\[].*?[\)\]]", "", text).isupper() else False,
+            span_font, font_size
+        )
+        for page_num, blocks in block_dict.items()
+        for block in blocks
+        if block['type'] == 0
+        for line in block['lines']
+        for span in line['spans']
+        if (text := span['text'].strip()) != ""
+        for xmin, ymin, xmax, ymax in [list(span['bbox'])]  # Get bounding box measurements
+        for span_font, font_size in [(span['font'], span['size'])]
+    ]
+
+    span_df = pd.DataFrame(rows, columns=['xmin', 'ymin', 'xmax', 'ymax',
+                                          'text', 'is_upper', 'is_bold',
+                                          'span_font', 'font_size'])
+    end = time.time()
+    print('get_scanned_pdf: Iterate over blocks and pages: ', timedelta(seconds=end - start))
     return span_df
 
 
@@ -366,56 +375,39 @@ def scrape_info(df: pd.DataFrame,
     html = webpage.text
     soup = BeautifulSoup(html, features="html.parser")
 
-    total_df = pd.DataFrame()  # I create a df to save results
+    total_data = []
 
-    for mep in df['MEP'].unique():  # For every mep in df I obtain her/his unique webpage on the ep website
+    for mep in df['MEP'].unique():
+        dicti = {"MEP": mep}
 
-        dicti = {"MEP": mep}  # i create a dictionary to save results
-
-        # for img in soup.find_all("img", {"alt": re.compile(f"^{mep}$", re.I)}):
-        img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})
-        if len(img) > 0:
-            img = soup.find_all("img", {"alt": re.compile(f"{mep}", re.I)})[0]
-
-            # I obtain the MEP's picture link, european party name and country from the mep's unique webpage
-
+        img = soup.find("img", {"alt": re.compile(f"{mep}", re.I)})
+        if img:
             x = img.parent.parent.parent.parent
             if x:
                 href = x['href']
                 webpage2 = requests.get(href)
-                html2 = webpage2.text
-                soup2 = BeautifulSoup(html2, features="html.parser")
+                soup2 = BeautifulSoup(webpage2.text, features="html.parser")
 
-                for span in soup2.find_all("span", {"class": 'erpl_newshub-photomep'}):  # I obtain the png link
-                    img = span.find("img")
-                    if img:
-                        picture_link = img['src']
-                        dicti["picture_link"] = picture_link
+                span = soup2.find("span", {"class": 'erpl_newshub-photomep'})
+                img = span.find("img") if span else None
 
-                for div in soup2.find_all('div', {"class": 'col-12'}):  # I obtain the european party
-                    pol_group = div.find('h3')
+                dicti["picture_link"] = img['src'] if img else np.NaN
+
+                div = soup2.find_all('div', {"class": 'col-12'})
+                for div_item in div:
+                    pol_group = div_item.find('h3')
+                    home_group = div_item.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
+
                     if pol_group:
-                        pol_group = pol_group.text.strip()
-                        dicti["European Group"] = pol_group
-
-                    home_group = div.find('div', {"class": 'erpl_title-h3 mt-1 mb-1'})
+                        dicti["European Group"] = pol_group.text.strip()
                     if home_group:
-                        home_group = home_group.text.strip()
-                        # I obtain the national party + country (will separate them later)
-                        dicti["national"] = home_group
+                        dicti["national"] = home_group.text.strip()
 
-                if "national" not in dicti:
-                    dicti["national"] = np.NaN
-                if "European Group" not in dicti:
-                    dicti["European Group"] = np.NaN
-                if "picture_link" not in dicti:
-                    dicti["picture_link"] = np.NaN
+                total_data.append(dicti)
 
-                dicti = pd.DataFrame([dicti])
-                total_df = pd.concat([total_df, dicti], ignore_index=True)
-
+    total_df = pd.DataFrame(total_data)
     total_df['Country'] = total_df['national'].str.extract(r'\((.*?)\)', expand=True)
-    total_df = total_df.drop(['national'], axis=1)
+    total_df.drop(['national'], axis=1, inplace=True)
 
     return total_df
 
@@ -428,11 +420,21 @@ def add_scraped_info(df: pd.DataFrame,
     :param url: mep directory url
     :return:
     """
+    start = time.time()
     df = find_differences(df=df)
+    end = time.time()
+    print('add_scraped_info: find_differences: ', timedelta(seconds=end - start))
+
+    start = time.time()
     scraped_df = scrape_info(df=df, url=url)
+    end = time.time()
+    print('add_scraped_info: scrape_info: ', timedelta(seconds=end - start))
+
+    start = time.time()
     # scraped_df = scraped_df.drop(['picture_link'], axis = 1)
     df_total = df.merge(scraped_df, how='left', on='MEP')
-
+    end = time.time()
+    print('df.merge: scrape_info: ', timedelta(seconds=end - start))
     return df_total
 
 
@@ -444,8 +446,14 @@ def add_scraped_info_no_diff(df: pd.DataFrame,
     :param df: df obtained through clean_df
     :return:
     """
+    start = time.time()
     scraped_df = scrape_info(df=df, url=url)
+    end = time.time()
+    print('add_scraped_info_no_diff: scrape_info: ', timedelta(seconds=end - start))
+
+    start = time.time()
     scraped_df = scraped_df.drop(['picture_link'], axis=1)
     df_total = df.merge(scraped_df, how='left', on='MEP')
-
+    end = time.time()
+    print('add_scraped_info_no_diff: drop&merge: ', timedelta(seconds=end - start))
     return df_total

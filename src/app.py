@@ -9,7 +9,9 @@ import gunicorn
 from dash.exceptions import PreventUpdate
 from dash.long_callback import DiskcacheLongCallbackManager
 import diskcache
-#from whitenoise import WhiteNoise
+import time
+from datetime import timedelta
+
 
 cache = diskcache.Cache('./cache')
 lcm = DiskcacheLongCallbackManager(cache)
@@ -20,7 +22,7 @@ app = dash.Dash(__name__,
                 long_callback_manager=lcm)
 
 server = app.server
-#server.wsgi_app = WhiteNoise(server.wsgi_app, root='static/')
+# server.wsgi_app = WhiteNoise(server.wsgi_app, root='static/')
 
 app.css.config.serve_locally = True
 
@@ -56,6 +58,9 @@ app.layout = dbc.Container(
 
 # Callbacks ------------------------------------------------------------------------------------------------------------
 
+
+
+
 @app.long_callback(
     Output('output', 'children'),
     Input('button', 'n_clicks'),
@@ -65,17 +70,36 @@ app.layout = dbc.Container(
 def return_divs(n_clicks, url):
 
     if n_clicks > 0:
-
+            start = time.time()
             save_pdf(url)
+            end = time.time()
+            print('save_pdf: ', timedelta(seconds=end - start))
+
+            start = time.time()
             df = get_scanned_pdf()
+            end = time.time()
+            print('get_scanned_pdf: ', timedelta(seconds=end - start))
+
+            start = time.time()
             df = clean_scanned(df)
+            end = time.time()
+            print('clean_scanned: ', timedelta(seconds=end - start))
+
+            start = time.time()
             df = join_dfs(df)
             df = df.rename(columns={'meps': 'MEP', 'am_no': 'Amendment Number',
                                     'article': 'Article', 'justification': 'Justification'})
+            end = time.time()
+            print('join_dfs: ', timedelta(seconds=end - start))
+
+            start = time.time()
             df_total = add_scraped_info(df=df)
+            end = time.time()
+            print('add_scraped_info: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Data table
+            start = time.time()
             scraped_df = df_total.copy()
             scraped_df = scraped_df.drop(['picture_link'], axis=1)
             dataframe = scraped_df.to_dict('records')
@@ -88,9 +112,11 @@ def return_divs(n_clicks, url):
                     {"name": "Modified Text", "id": "Modified Text", "presentation": "markdown"},
                     {"name": "European Group", "id": "European Group"},
                     {"name": "Country", "id": "Country"}]
+            end = time.time()
+            print('scraped_df.to_dict: ', timedelta(seconds=end - start))
             # ---------------------------------------------------------------------------------------------------------------
             # Network graph
-
+            start = time.time()
             stylesheet = [{'selector': 'node',
                            'style': {
                                'label': 'data(label)',
@@ -101,11 +127,13 @@ def return_divs(n_clicks, url):
                            'style': {'width': 'data(weight)'}}]
 
             elements = get_network_elements_v2(df_total)
+            end = time.time()
+            print('get_network_elements_v2: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Sunburst
-
-            df_sun = df_total[['Amendment Number', 'Article']]
+            start = time.time()
+            df_sun = df_total[['Amendment Number', 'Article']].copy()
             df_sun['value'] = 1
             df_sun = df_sun.fillna('')
             fig_sun = px.sunburst(df_sun, path=['Article', 'Amendment Number'], values='value',
@@ -117,14 +145,20 @@ def return_divs(n_clicks, url):
                 'plot_bgcolor': '#fcfcfc',
                 'paper_bgcolor': '#fcfcfc',
             })
+            end = time.time()
+            print('sunburst: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Barchart
+            start = time.time()
+            df_counts = df_total[['MEP']]
+            df_counts = df_counts.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
+            df_bar = df_total.merge(df_counts, how='right', on='MEP')
+            df_bar = df_bar.drop_duplicates(subset=['MEP', 'Number of amendments', 'European Group'])
+            end = time.time()
+            print('add_scraped_info_no_diff: ', timedelta(seconds=end - start))
 
-            df_bar = df_total[['MEP']]
-            df_bar = df_bar.value_counts().rename_axis('MEP').reset_index(name='Number of amendments')
-            df_bar = add_scraped_info_no_diff(df=df_bar)
-
+            start = time.time()
             color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
                                   'European Conservatives and Reformists Group': '#0285fd',
                                   'Renew Europe Group': '#fea607',
@@ -148,11 +182,14 @@ def return_divs(n_clicks, url):
                 'plot_bgcolor': '#fcfcfc',
                 'paper_bgcolor': '#fcfcfc',
             })
+            end = time.time()
+            print('fig_bar: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Cards
             #headers = {
             #    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36'}
+            start = time.time()
             cards = []
             df_total['id'] = df_total['MEP'].map(hash)
             for mep in df_total['MEP'].unique():
@@ -221,10 +258,12 @@ def return_divs(n_clicks, url):
                                'margin-bottom': '1%', },
                     )
                     cards.append(card)
+            end = time.time()
+            print('cards: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Dynamic layout
-
+            start = time.time()
             dynamic_layout = [
                 dbc.Row([
                     dash_table.DataTable(
@@ -287,7 +326,8 @@ def return_divs(n_clicks, url):
                                 id="cards-output",
                                 )),
             ]
-
+            end = time.time()
+            print('dynami layout: ', timedelta(seconds=end - start))
             return dynamic_layout
 
 
