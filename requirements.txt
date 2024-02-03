@@ -88,3 +88,4 @@ yarg==0.1.9
 yolk3k==0.9
 
 whitenoise~=6.4.0
+scikit-learn~=1.4.0

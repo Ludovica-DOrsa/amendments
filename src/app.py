@@ -97,6 +97,12 @@ def return_divs(n_clicks, url):
             end = time.time()
             print('add_scraped_info: ', timedelta(seconds=end - start))
 
+            # Add topics
+            start = time.time()
+            df_total, nmf = add_topics(df_total)
+            end = time.time()
+            print('add_topics: ', timedelta(seconds=end - start))
+
             # ---------------------------------------------------------------------------------------------------------------
             # Data table
             start = time.time()
@@ -111,7 +117,9 @@ def return_divs(n_clicks, url):
                     {"name": "Text proposed by the Commission", "id": "Text proposed by the Commission"},
                     {"name": "Modified Text", "id": "Modified Text", "presentation": "markdown"},
                     {"name": "European Group", "id": "European Group"},
-                    {"name": "Country", "id": "Country"}]
+                    {"name": "Country", "id": "Country"},
+                    {"name": "Topic", "id": "Topic"},
+                    ]
             end = time.time()
             print('scraped_df.to_dict: ', timedelta(seconds=end - start))
             # ---------------------------------------------------------------------------------------------------------------
@@ -131,22 +139,39 @@ def return_divs(n_clicks, url):
             print('get_network_elements_v2: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
-            # Sunburst
+            # Topic chart
+
+            # ---------------------------------------------------------------------------------------------------------------
+            # Polar chart
             start = time.time()
-            df_sun = df_total[['Amendment Number', 'Article']].copy()
-            df_sun['value'] = 1
-            df_sun = df_sun.fillna('')
-            fig_sun = px.sunburst(df_sun, path=['Article', 'Amendment Number'], values='value',
-                                  color_discrete_sequence=px.colors.sequential.Reds,
-                                  title='Which were the most amended articles?')
-            fig_sun.update_layout(
+            df_polar = df_total.groupby(['European Group',
+                                         'Article']).size().reset_index(name='Number of Amendments').copy()
+            if len(df_polar) >= 20:
+                df_polar = df_polar[df_polar['Article'].isin(
+                    df_polar.groupby('Article')['Number of Amendments'].sum().nlargest(20).index)]
+
+            color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
+                                  'European Conservatives and Reformists Group': '#0285fd',
+                                  'Renew Europe Group': '#fea607',
+                                  'Group of the Greens/European Free Alliance': '#27c201',
+                                  'Group of the Progressive Alliance of Socialists and Democrats in the European Parliament':
+                                      '#d41011',
+                                  'The Left group in the European Parliament - GUE/NGL': '#4c0203',
+                                  'Non-attached Members': '#cbcbcb',
+                                  'Identity and Democracy Group': '#879c8f'}
+
+            fig_polar = px.bar_polar(df_polar, r="Number of Amendments", theta="Article", color="European Group",
+                                     color_discrete_map=color_discrete_map, template='plotly_white',
+                                     title='Top 20 most amended articles')
+            fig_polar.update_layout(
                 font_family="sans-serif")
-            fig_sun.update_layout({
+            fig_polar.update_layout({
                 'plot_bgcolor': '#fcfcfc',
                 'paper_bgcolor': '#fcfcfc',
             })
+            fig_polar.update_layout(showlegend=False)
             end = time.time()
-            print('sunburst: ', timedelta(seconds=end - start))
+            print('polar: ', timedelta(seconds=end - start))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Barchart
@@ -159,15 +184,6 @@ def return_divs(n_clicks, url):
             print('add_scraped_info_no_diff: ', timedelta(seconds=end - start))
 
             start = time.time()
-            color_discrete_map = {"Group of the European People's Party (Christian Democrats)": '#003f86',
-                                  'European Conservatives and Reformists Group': '#0285fd',
-                                  'Renew Europe Group': '#fea607',
-                                  'Group of the Greens/European Free Alliance': '#27c201',
-                                  'Group of the Progressive Alliance of Socialists and Democrats in the European Parliament':
-                                      '#d41011',
-                                  'The Left group in the European Parliament - GUE/NGL': '#4c0203',
-                                  'Non-attached Members': '#cbcbcb',
-                                  'Identity and Democracy Group': '#879c8f'}
 
             fig_bar = px.bar(df_bar, x='Number of amendments', y='MEP', template='plotly_white',
                              title='Who signed the most amendments?',
@@ -274,6 +290,7 @@ def return_divs(n_clicks, url):
                         sort_action="native",
                         sort_mode="multi",
                         export_format='xlsx',
+                        filter_action="native",
                         # export_headers='display',
                         # filter_action="native",
                         markdown_options={"html": True},
@@ -315,7 +332,7 @@ def return_divs(n_clicks, url):
                            'margin-top': '3%'}
                 ),
                 dbc.Row([
-                    dbc.Col([dcc.Graph(id='sunburst', figure=fig_sun)], style={'width': '40%', 'height': '450px'}),
+                    dbc.Col([dcc.Graph(id='sunburst', figure=fig_polar)], style={'width': '40%', 'height': '450px'}),
                     dbc.Col([dcc.Graph(id='barchart', figure=fig_bar)], style={'width': '60%', 'height': '450px'}),
                 ]),
                 html.H5("Who are the MEPs involved?", style={'margin-left': '4%',

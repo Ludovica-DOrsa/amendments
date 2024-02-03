@@ -12,9 +12,45 @@ import urllib
 import os
 import pathlib
 import time
+from typing import Tuple
 from datetime import timedelta
+from sklearn.decomposition import NMF
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
+
+
+def max_idx(nestedlist):
+    """
+    Get the index of the maximum number in a nested list
+    :param nestedlist: the nested list
+    :return:
+    """
+    m = []
+    for i in nestedlist:
+        m.append(np.argmax(i))
+    return pd.Series(m)
+
+
+def add_topics(df_total: pd.DataFrame,
+               n_features: int = 1000,
+               n_components: int = 10) -> Tuple[pd.DataFrame, object]:
+    """
+    Uses negative matrix factorization for topic modelling. Returns the original dataframe with an additional
+    column specifying the most probable topic and the nmf model.
+    :param n_components: number of topics
+    :param df_total: dataframe with a column called Amendment
+    :param n_features: build a vocabulary that only consider the top n_features ordered by term frequency across the
+    corpus.
+    :return:
+    """
+    tfidf_vectorizer = TfidfVectorizer(max_df=0.95, min_df=2, max_features=n_features,
+                                       stop_words="english", token_pattern=r'(?u)\b[A-Za-z]+\b')
+    tfidf = tfidf_vectorizer.fit_transform(df_total['Amendment'])
+    nmf = NMF(random_state=1, l1_ratio=.5, init='nndsvd', n_components=n_components).fit(tfidf)
+    doc_topic_distrib = nmf.transform(tfidf)
+    df_total['Topic'] = max_idx(doc_topic_distrib)
+    return df_total, nmf
 
 
 def save_pdf(url: str, name: str | None = None):
