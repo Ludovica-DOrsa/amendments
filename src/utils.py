@@ -58,7 +58,7 @@ def plot_wordcloud(topic,
     dict = {}
     for A, B in zip(top_features, weights):
         dict[A] = B
-    wc = WordCloud(background_color='white').generate_from_frequencies(frequencies=dict)
+    wc = WordCloud(background_color='white', height=200, width=200).generate_from_frequencies(frequencies=dict)
     plt.title(title)
     wc_img = wc.to_image()
     with BytesIO() as buffer:

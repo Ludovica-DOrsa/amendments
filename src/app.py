@@ -144,7 +144,19 @@ def return_divs(n_clicks, url):
             for topic_idx, topic in enumerate(nmf.components_):
                 img_wc = plot_wordcloud(topic=topic, feature_names=feature_names, n_words=20,
                                         title=f'Topic {topic_idx}')
-                wcs.append(html.Img(src="data:image/png;base64," + img_wc))
+                wcs.append(dbc.Card(
+                    [
+                        dbc.CardBody(
+                            [
+                                html.H4(f"Topic {topic_idx + 1}", className="card-title"),
+                                html.Img(src="data:image/png;base64," + img_wc)
+                            ]
+                        ),
+                    ],
+                    style={"width": "16rem",
+                           "margin-left": "1%",
+                           'margin-bottom': '1%', },
+                ))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Polar chart
@@ -347,6 +359,8 @@ def return_divs(n_clicks, url):
                                        'height': '400px', },
                                 id="cards-output",
                                 )),
+                html.H5("What is this document about?", style={'margin-left': '4%',
+                                                        'margin-top': '4%'}),
                 dbc.Col(
                     dbc.Row(children=wcs, style={'overflow-x': 'scroll', 'margin-left': '4%', 'margin-right': '4%',
                                                  'height': '400px'}, id="wordclouds")
