@@ -16,8 +16,55 @@ from typing import Tuple
 from datetime import timedelta
 from sklearn.decomposition import NMF
 from sklearn.feature_extraction.text import TfidfVectorizer
+from wordcloud import WordCloud
+import base64
+from io import BytesIO
+import matplotlib.pyplot as plt
 
 url = 'https://www.europarl.europa.eu/doceo/document/ITRE-AM-746920_EN.pdf'
+
+
+def plot_wordcloud(model, feature_names, n_words):
+    for topic_idx, topic in enumerate(model.components_):
+
+        top_features_ind = topic.argsort()[-n_words:]
+        top_features = feature_names[top_features_ind]
+        weights = topic[top_features_ind]
+        dict = {}
+        for A, B in zip(top_features, weights):
+            dict[A] = B
+        wc = WordCloud().generate_from_frequencies(frequencies=dict)
+        wc_img = wc.to_image()
+        with BytesIO() as buffer:
+            wc_img.save(buffer, 'png')
+            img2 = base64.b64encode(buffer.getvalue()).decode()
+
+
+def plot_wordcloud(topic,
+                   feature_names: object,
+                   n_words: int,
+                   title: str):
+    """
+
+    :param topic:
+    :param feature_names:
+    :param n_words:
+    :param title:
+    :return:
+    """
+    top_features_ind = topic.argsort()[-n_words:]
+    top_features = feature_names[top_features_ind]
+    weights = topic[top_features_ind]
+    dict = {}
+    for A, B in zip(top_features, weights):
+        dict[A] = B
+    wc = WordCloud(background_color='white').generate_from_frequencies(frequencies=dict)
+    plt.title(title)
+    wc_img = wc.to_image()
+    with BytesIO() as buffer:
+        wc_img.save(buffer, 'png')
+        img2 = base64.b64encode(buffer.getvalue()).decode()
+    return img2
 
 
 def max_idx(nestedlist):
@@ -34,7 +81,7 @@ def max_idx(nestedlist):
 
 def add_topics(df_total: pd.DataFrame,
                n_features: int = 1000,
-               n_components: int = 10) -> Tuple[pd.DataFrame, object]:
+               n_components: int = 10) -> Tuple[pd.DataFrame, object, object]:
     """
     Uses negative matrix factorization for topic modelling. Returns the original dataframe with an additional
     column specifying the most probable topic and the nmf model.
@@ -50,7 +97,8 @@ def add_topics(df_total: pd.DataFrame,
     nmf = NMF(random_state=1, l1_ratio=.5, init='nndsvd', n_components=n_components).fit(tfidf)
     doc_topic_distrib = nmf.transform(tfidf)
     df_total['Topic'] = max_idx(doc_topic_distrib)
-    return df_total, nmf
+    feature_names = tfidf_vectorizer.get_feature_names_out()
+    return df_total, nmf, feature_names
 
 
 def save_pdf(url: str, name: str | None = None):

@@ -99,7 +99,7 @@ def return_divs(n_clicks, url):
 
             # Add topics
             start = time.time()
-            df_total, nmf = add_topics(df_total)
+            df_total, nmf, feature_names = add_topics(df_total)
             end = time.time()
             print('add_topics: ', timedelta(seconds=end - start))
 
@@ -140,6 +140,11 @@ def return_divs(n_clicks, url):
 
             # ---------------------------------------------------------------------------------------------------------------
             # Topic chart
+            wcs = []
+            for topic_idx, topic in enumerate(nmf.components_):
+                img_wc = plot_wordcloud(topic=topic, feature_names=feature_names, n_words=20,
+                                        title=f'Topic {topic_idx}')
+                wcs.append(html.Img(src="data:image/png;base64," + img_wc))
 
             # ---------------------------------------------------------------------------------------------------------------
             # Polar chart
@@ -342,6 +347,10 @@ def return_divs(n_clicks, url):
                                        'height': '400px', },
                                 id="cards-output",
                                 )),
+                dbc.Col(
+                    dbc.Row(children=wcs, style={'overflow-x': 'scroll', 'margin-left': '4%', 'margin-right': '4%',
+                                                 'height': '400px'}, id="wordclouds")
+                )
             ]
             end = time.time()
             print('dynami layout: ', timedelta(seconds=end - start))
